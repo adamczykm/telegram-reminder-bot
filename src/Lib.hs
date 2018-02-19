@@ -15,6 +15,7 @@ module Lib
     )
 where
 
+import Control.Concurrent
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.Maybe
@@ -39,7 +40,7 @@ import           Control.Monad.Logger (runStderrLoggingT)
 
 import           Database.Persist.Sqlite ( Entity, ConnectionPool, createSqlitePool, unSqlBackendKey
                                          , runSqlPool, runSqlPersistMPool, selectList
-                                         , runMigration,  (==.)
+                                         , runMigration, (>=.),(<=.),(==.)
                                          , insert, entityVal)
 
 import Models
@@ -96,6 +97,8 @@ startApp = do
         , dbConnectionPool = dbPool
         }
 
+  --------------  run reminding task ------------------
+  void $ forkIO $ runRemindingTask config
 
   --------------  run servant application ------------------
   run 8080 $ serve botApi $ initBotServer config
@@ -141,10 +144,12 @@ addNewReminderCommand msg = do
   let (_, rest) = T.breakOn " " msgTxt
       chatId = chat_id $ Web.Telegram.API.Bot.chat msg
       (timestampStr, reminderStr) = T.breakOn "|" rest
-      timestamp = parseReminderTime timestampStr
+      -- timestamp = parseReminderTime timestampStr
+
 
   return $ MkBotCommand $ do
     pool <- dbConnectionPool <$> ask
+    timestamp <- liftIO $ addUTCTime (realToFrac 60) <$> getCurrentTime
     reminderId <- liftIO $ flip runSqlPersistMPool pool $ insert $ Reminder chatId timestamp reminderStr
     let returned_msg = T.append "Added new reminder with ID: " (T.pack $ show $ unSqlBackendKey $ unReminderKey reminderId)
     return $ sendMessageM $ sendMessageRequest (ChatId chatId) returned_msg
@@ -164,6 +169,23 @@ listRemindersCommand msg = do
     reminders :: [Entity Reminder]  <- liftIO $ flip runSqlPersistMPool pool $ selectList [ ReminderChatId ==. chatId] []
     let returned_msg = T.unlines $ "Reminders for this chat:" : (T.pack . show . entityVal <$> reminders)
     return $ sendMessageM $ sendMessageRequest (ChatId chatId) returned_msg
+
+--------------- reminding task -----------------------
+
+runRemindingTask :: BotConfig -> IO ()
+runRemindingTask MkBotConfig{..} = forever $ do
+  timeNow <- getCurrentTime
+  let seconds = 10
+      timeRange = fromIntegral (seconds `div` 2)
+  
+  threadDelay $ seconds * 1000000
+  -- get all reminders
+  reminders :: [Entity Reminder]  <- liftIO $ flip runSqlPersistMPool dbConnectionPool $ selectList [ReminderTimeOfReminder >=. addUTCTime (realToFrac (- timeRange)) timeNow , ReminderTimeOfReminder <=. addUTCTime (realToFrac timeRange) timeNow] []
+  
+  mapM sendReminder reminders
+
+  where
+    sendReminder (entityVal -> (Reminder cId _ msg)) = liftIO $ runClient (sendMessageM (sendMessageRequest (ChatId cId) msg)) telegramToken manager
 
 
 ------------- Server ------------------------------
