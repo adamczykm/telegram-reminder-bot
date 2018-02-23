@@ -23,6 +23,7 @@ Reminder
   chatId Int64
   timeOfReminder UTCTime
   reminderText Text
+  schedulingMsgId Int
   deriving Eq Read Show
 |]
 
