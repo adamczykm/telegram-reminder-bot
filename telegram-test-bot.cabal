@@ -18,10 +18,13 @@ library
   exposed-modules:     Lib
                      , Version
                      , Models
+                     , DateParser
+
   build-depends:       base >= 4.7 && < 5
                      , aeson
                      , servant-server
                      , monad-logger
+                     , megaparsec
                      , persistent
                      , persistent-template
                      , persistent-sqlite
