@@ -1,9 +1,9 @@
 version: '3'
 services:
-    telegram-test-bot:
+    telegram-reminder-bot:
         build: .
-        image: telegram-test-bot
-        command: telegram-test-bot
+        image: telegram-reminder-bot
+        command: telegram-reminder-bot
         expose:
             - "1234"
     nginx:
@@ -12,4 +12,4 @@ services:
         ports:
             - "8080:80"
         depends_on:
-            - telegram-test-bot
+            - telegram-reminder-bot
